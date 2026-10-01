@@ -20,7 +20,7 @@ WORKDIR /frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 
 # 安装 pnpm 并安装依赖
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+RUN npm install -g pnpm && pnpm install --frozen-lockfile --ignore-scripts
 
 # 复制前端源码并构建
 COPY frontend/ ./
