@@ -55,6 +55,15 @@ export const updateAccountStatus = async (id: string, enabled: boolean): Promise
   return put(`/cookies/${id}/status`, { enabled });
 };
 
+// ============ 密码登录（滑块自动化）============
+export const startPasswordLogin = async (account: string, password: string, show_browser = false): Promise<{ success: boolean; session_id?: string; message?: string }> => {
+  return post('/password-login', { account, password, show_browser });
+};
+
+export const checkPasswordLoginStatus = async (sessionId: string): Promise<any> => {
+  return get(`/password-login/check/${sessionId}`);
+};
+
 export const deleteAccount = async (id: string): Promise<any> => {
   return del(`/cookies/${id}`);
 };

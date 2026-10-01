@@ -7,6 +7,8 @@ import {
   deleteAccount,
   generateQRLogin,
   checkQRLoginStatus,
+  startPasswordLogin,
+  checkPasswordLoginStatus,
   updateAccountRemark,
   updateAccountAutoConfirm,
   updateAccountPauseDuration,
@@ -19,7 +21,7 @@ import {
 import {
   Plus, Power, Edit2, Trash2, QrCode, X, Check, Loader2,
   MessageSquare, RefreshCw, Save, User, Clock, MessageCircle,
-  Upload, Key, Eye, EyeOff, Bot, Settings
+  Upload, Key, Eye, EyeOff, Bot, Settings, ShieldAlert, KeyRound
 } from 'lucide-react';
 
 type ModalType = 'edit' | 'ai-settings' | null;
@@ -31,6 +33,12 @@ const AccountList: React.FC = () => {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [qrStatus, setQrStatus] = useState<string>('pending');
   const [verificationUrl, setVerificationUrl] = useState<string>('');
+  // 密码登录状态
+  const [showPwModal, setShowPwModal] = useState(false);
+  const [pwForm, setPwForm] = useState({ account_id: '', account: '', password: '' });
+  const [pwStatus, setPwStatus] = useState<string>('form'); // form/loading/verification_required/success/failed
+  const [pwError, setPwError] = useState<string>('');
+  const [pwVerification, setPwVerification] = useState<string>('');
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [editingAccount, setEditingAccount] = useState<AccountDetail | null>(null);
 
@@ -241,6 +249,62 @@ const AccountList: React.FC = () => {
     }
   };
 
+  // 账号密码登录（绕过扫码风控）
+  const startPasswordLoginFlow = async () => {
+    if (!pwForm.account_id.trim() || !pwForm.account.trim() || !pwForm.password.trim()) {
+      alert('请填写账号ID、登录账号和密码');
+      return;
+    }
+    setShowPwModal(true);
+    setPwStatus('loading');
+    setPwError('');
+    setPwVerification('');
+    try {
+      const res = await startPasswordLogin({
+        account_id: pwForm.account_id.trim(),
+        account: pwForm.account.trim(),
+        password: pwForm.password,
+        show_browser: false,
+      });
+      if (!res.success || !res.session_id) {
+        setPwStatus('failed');
+        setPwError(res.message || '启动登录失败');
+        return;
+      }
+      const sessionId = res.session_id;
+      const interval = setInterval(async () => {
+        try {
+          const statusRes = await checkPasswordLoginStatus(sessionId);
+          if (statusRes.status === 'success') {
+            clearInterval(interval);
+            setPwStatus('success');
+            setTimeout(() => {
+              setShowPwModal(false);
+              loadAccounts();
+            }, 1200);
+          } else if (statusRes.status === 'verification_required') {
+            setPwStatus('verification_required');
+            if (statusRes.verification_url) setPwVerification(statusRes.verification_url);
+          } else if (statusRes.status === 'failed') {
+            clearInterval(interval);
+            setPwStatus('failed');
+            setPwError(statusRes.error || statusRes.message || '登录失败，请检查账号密码');
+          } else if (statusRes.status === 'not_found') {
+            clearInterval(interval);
+            setPwStatus('failed');
+            setPwError('登录会话已过期，请重试');
+          }
+          // processing: 继续轮询
+        } catch (e) {
+          // 单次轮询失败不中断，等下一轮
+        }
+      }, 3000);
+    } catch (e) {
+      setPwStatus('failed');
+      setPwError('网络错误，请重试');
+    }
+  };
+
   if (loading) return <div className="p-20 flex justify-center"><Loader2 className="w-8 h-8 text-[#FFE815] animate-spin"/></div>;
 
   return (
@@ -250,13 +314,22 @@ const AccountList: React.FC = () => {
           <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">账号管理</h2>
           <p className="text-gray-500 mt-2 font-medium">管理您的闲鱼授权账号及设置。</p>
         </div>
-        <button
-            onClick={startQRLogin}
-            className="ios-btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-yellow-200 transition-transform hover:scale-105 active:scale-95"
-        >
-          <QrCode className="w-5 h-5" />
-          扫码添加新账号
-        </button>
+        <div className="flex gap-3">
+          <button
+              onClick={() => { setShowPwModal(true); setPwStatus('form'); setPwError(''); setPwVerification(''); }}
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-white text-gray-900 border-2 border-gray-200 hover:border-gray-300 transition-colors"
+          >
+            <KeyRound className="w-5 h-5" />
+            密码登录添加
+          </button>
+          <button
+              onClick={startQRLogin}
+              className="ios-btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-yellow-200 transition-transform hover:scale-105 active:scale-95"
+          >
+            <QrCode className="w-5 h-5" />
+            扫码添加新账号
+          </button>
+        </div>
       </div>
 
       {/* Account Grid */}
@@ -386,6 +459,108 @@ const AccountList: React.FC = () => {
                           </div>
 
                           <p className="text-xs text-gray-400 font-medium bg-gray-50 py-2 rounded-xl">二维码有效期为5分钟，请尽快扫码。</p>
+                      </div>
+                  </div>
+              </div>
+          </div>,
+          document.body
+      )}
+
+      {/* Password Login Modal */}
+      {showPwModal && createPortal(
+          <div className="modal-overlay-centered">
+              <div className="modal-container" style={{maxWidth: '24rem'}}>
+                  <button
+                    onClick={() => setShowPwModal(false)}
+                    className="self-end p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors mb-6"
+                  >
+                    <X className="w-5 h-5 text-gray-600" />
+                  </button>
+
+                  <div className="modal-body">
+                      <div className="text-center">
+                          <h3 className="text-2xl font-extrabold text-gray-900 mb-2">账号密码登录</h3>
+                          <p className="text-gray-500 mb-6 font-medium">使用闲鱼账号密码登录，绕过扫码风控</p>
+
+                          {pwStatus === 'form' && (
+                              <div className="space-y-3 text-left mb-4">
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">账号ID（自定义备注，不可重复）</label>
+                                      <input
+                                          value={pwForm.account_id}
+                                          onChange={(e) => setPwForm({...pwForm, account_id: e.target.value})}
+                                          placeholder="例如 my-main-account"
+                                          className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#FFE815]"
+                                      />
+                                  </div>
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">登录账号（手机号/用户名）</label>
+                                      <input
+                                          value={pwForm.account}
+                                          onChange={(e) => setPwForm({...pwForm, account: e.target.value})}
+                                          placeholder="闲鱼登录账号"
+                                          className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#FFE815]"
+                                      />
+                                  </div>
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">密码</label>
+                                      <input
+                                          type="password"
+                                          value={pwForm.password}
+                                          onChange={(e) => setPwForm({...pwForm, password: e.target.value})}
+                                          placeholder="闲鱼登录密码"
+                                          className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#FFE815]"
+                                      />
+                                  </div>
+                                  <button
+                                      onClick={startPasswordLoginFlow}
+                                      className="w-full ios-btn-primary py-2.5 rounded-xl font-bold flex items-center justify-center gap-2"
+                                  >
+                                      <KeyRound className="w-4 h-4" />
+                                      开始登录
+                                  </button>
+                              </div>
+                          )}
+
+                          {pwStatus === 'loading' && (
+                              <div className="py-10 flex flex-col items-center">
+                                  <Loader2 className="w-10 h-10 text-[#FFE815] animate-spin mb-3" />
+                                  <span className="text-sm text-gray-500 font-medium">正在登录，请稍候…</span>
+                                  <span className="text-xs text-gray-400 mt-1">如遇滑块验证将自动处理</span>
+                              </div>
+                          )}
+
+                          {pwStatus === 'verification_required' && (
+                              <div className="py-6 flex flex-col items-center">
+                                  <ShieldAlert className="w-8 h-8 text-orange-500 mb-2" />
+                                  <span className="text-orange-500 font-bold mb-1">需要验证</span>
+                                  <p className="text-xs text-gray-500 text-center mb-3">{pwVerification ? '请点击下方按钮在手机/浏览器完成验证，完成后自动继续' : '请在完成验证截图所示操作后等待自动继续'}</p>
+                                  {pwVerification && (
+                                      <a href={pwVerification} target="_blank" rel="noopener noreferrer"
+                                          className="text-xs bg-[#FFE815] text-gray-900 font-bold px-4 py-1.5 rounded-full hover:brightness-95 transition">
+                                          打开验证页面
+                                      </a>
+                                  )}
+                              </div>
+                          )}
+
+                          {pwStatus === 'success' && (
+                              <div className="py-10 flex flex-col items-center text-green-600 animate-fade-in">
+                                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                                      <Check className="w-8 h-8" />
+                                  </div>
+                                  <span className="font-bold text-lg">登录成功</span>
+                                  <span className="text-xs text-gray-400 mt-1">账号已添加到列表</span>
+                              </div>
+                          )}
+
+                          {pwStatus === 'failed' && (
+                              <div className="py-6 flex flex-col items-center">
+                                  <span className="text-red-500 font-bold mb-2">登录失败</span>
+                                  <p className="text-xs text-gray-500 text-center mb-3">{pwError || '请检查账号密码是否正确'}</p>
+                                  <button onClick={() => { setPwStatus('form'); setPwError(''); }} className="text-xs bg-gray-200 px-3 py-1 rounded-full flex items-center gap-1 hover:bg-gray-300"><RefreshCw className="w-3 h-3"/> 重新填写</button>
+                              </div>
+                          )}
                       </div>
                   </div>
               </div>
