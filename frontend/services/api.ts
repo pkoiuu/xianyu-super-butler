@@ -56,8 +56,8 @@ export const updateAccountStatus = async (id: string, enabled: boolean): Promise
 };
 
 // ============ 密码登录（滑块自动化）============
-export const startPasswordLogin = async (account: string, password: string, show_browser = false): Promise<{ success: boolean; session_id?: string; message?: string }> => {
-  return post('/password-login', { account, password, show_browser });
+export const startPasswordLogin = async (data: { account_id: string; account: string; password: string; show_browser?: boolean }): Promise<{ success: boolean; session_id?: string; message?: string }> => {
+  return post('/password-login', data);
 };
 
 export const checkPasswordLoginStatus = async (sessionId: string): Promise<any> => {

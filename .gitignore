@@ -812,3 +812,4 @@ frontend/coverage/
 .spec-workflow
 .cursor
 .claude
+fix_pipeline.sh
