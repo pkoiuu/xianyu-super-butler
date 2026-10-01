@@ -30,6 +30,7 @@ const AccountList: React.FC = () => {
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [qrStatus, setQrStatus] = useState<string>('pending');
+  const [verificationUrl, setVerificationUrl] = useState<string>('');
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [editingAccount, setEditingAccount] = useState<AccountDetail | null>(null);
 
@@ -207,6 +208,7 @@ const AccountList: React.FC = () => {
   const startQRLogin = async () => {
     setShowQRModal(true);
     setQrStatus('loading');
+    setVerificationUrl('');
     try {
       const res = await generateQRLogin();
       if (res.success && res.qr_code_url && res.session_id) {
@@ -222,6 +224,12 @@ const AccountList: React.FC = () => {
               setShowQRModal(false);
               loadAccounts();
             }, 1000);
+          } else if (statusRes.status === 'verification_required') {
+            // 账号被风控，展示手机验证链接，继续轮询等待验证完成
+            if (statusRes.verification_url && !verificationUrl) {
+              setVerificationUrl(statusRes.verification_url);
+            }
+            setQrStatus('verification_required');
           } else if (statusRes.status === 'expired' || statusRes.status === 'error') {
             clearInterval(interval);
             setQrStatus('error');
@@ -354,6 +362,19 @@ const AccountList: React.FC = () => {
                                          <Check className="w-8 h-8" />
                                       </div>
                                       <span className="font-bold text-lg">登录成功</span>
+                                  </div>
+                              )}
+                              {qrStatus === 'verification_required' && (
+                                  <div className="flex flex-col items-center px-3">
+                                      <ShieldAlert className="w-8 h-8 text-orange-500 mb-1" />
+                                      <span className="text-orange-500 font-bold mb-1">需要手机验证</span>
+                                      <p className="text-xs text-gray-500 text-center mb-2">账号被风控，请在手机上完成验证后自动继续</p>
+                                      {verificationUrl && (
+                                          <a href={verificationUrl} target="_blank" rel="noopener noreferrer"
+                                              className="text-xs bg-[#FFE815] text-gray-900 font-bold px-3 py-1.5 rounded-full hover:brightness-95 transition">
+                                              打开验证页面
+                                          </a>
+                                      )}
                                   </div>
                               )}
                               {qrStatus === 'error' && (

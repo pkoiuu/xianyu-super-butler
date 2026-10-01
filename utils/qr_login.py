@@ -311,11 +311,10 @@ class QRLoginManager:
 
             logger.info(f"开始监控二维码状态: {session_id}")
 
-            # 监控登录状态
-            max_wait_time = 300  # 5分钟
+            # 监控登录状态（风控验证需要更长时间，跟随会话有效期）
             start_time = time.time()
 
-            while time.time() - start_time < max_wait_time:
+            while time.time() - start_time < max(300, session.expire_time + 60):
                 try:
                     # 检查会话是否还存在
                     if session_id not in self.sessions:
@@ -340,16 +339,19 @@ class QRLoginManager:
                             is True
                         ):
                             # 账号被风控，需要手机验证
-                            session.status = 'verification_required'
                             iframe_url = (
                                 resp.json()
                                 .get("content", {})
                                 .get("data", {})
                                 .get("iframeRedirectUrl")
                             )
-                            session.verification_url = iframe_url
-                            logger.warning(f"账号被风控，需要手机验证: {session_id}, URL: {iframe_url}")
-                            break
+                            if not session.verification_url:
+                                session.verification_url = iframe_url
+                                # 延长会话有效期，等待用户完成手机验证
+                                session.expire_time += 600
+                                logger.warning(f"账号被风控，需要手机验证: {session_id}, URL: {iframe_url}")
+                            session.status = 'verification_required'
+                            # 不退出监控循环，继续轮询；用户完成验证后会返回登录确认
                         else:
                             # 登录成功
                             session.status = 'success'
@@ -379,10 +381,13 @@ class QRLoginManager:
                             session.status = 'scanned'
                             logger.info(f"二维码已扫描，等待确认: {session_id}")
                     else:
-                        # 用户取消确认
-                        session.status = 'cancelled'
-                        logger.info(f"用户取消登录: {session_id}")
-                        break
+                        # 用户取消确认（风控验证等待期间的未知状态不判取消，继续等待）
+                        if session.status == 'verification_required':
+                            logger.debug(f"风控验证等待中的未知状态: {session_id}, qrCodeStatus: {qrcode_status}")
+                        else:
+                            session.status = 'cancelled'
+                            logger.info(f"用户取消登录: {session_id}")
+                            break
 
                     await asyncio.sleep(0.8)  # 每0.8秒检查一次
 
