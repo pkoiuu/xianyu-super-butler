@@ -1,0 +1,50 @@
+name: Build xianyu-butler image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (load into runner docker storage)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: xianyu-butler:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save image to tar.gz
+        run: |
+          docker save xianyu-butler:latest | gzip > xianyu-butler-image.tar.gz
+          ls -lh xianyu-butler-image.tar.gz
+
+      - name: Upload image artifact (primary delivery channel)
+        uses: actions/upload-artifact@v4
+        with:
+          name: xianyu-butler-image
+          path: xianyu-butler-image.tar.gz
+          retention-days: 7
+          compression-level: 0
+
+      - name: Push to GHCR (best-effort backup channel)
+        if: success()
+        continue-on-error: true
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker tag xianyu-butler:latest ghcr.io/pkoiuu/xianyu-super-butler:latest
+          docker push ghcr.io/pkoiuu/xianyu-super-butler:latest
