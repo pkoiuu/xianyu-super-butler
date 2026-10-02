@@ -39,6 +39,7 @@ const AccountList: React.FC = () => {
   const [pwStatus, setPwStatus] = useState<string>('form'); // form/loading/verification_required/success/failed
   const [pwError, setPwError] = useState<string>('');
   const [pwVerification, setPwVerification] = useState<string>('');
+  const [pwScreenshot, setPwScreenshot] = useState<string>('');
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [editingAccount, setEditingAccount] = useState<AccountDetail | null>(null);
 
@@ -259,6 +260,7 @@ const AccountList: React.FC = () => {
     setPwStatus('loading');
     setPwError('');
     setPwVerification('');
+    setPwScreenshot('');
     try {
       const res = await startPasswordLogin({
         account_id: pwForm.account_id.trim(),
@@ -285,6 +287,7 @@ const AccountList: React.FC = () => {
           } else if (statusRes.status === 'verification_required') {
             setPwStatus('verification_required');
             if (statusRes.verification_url) setPwVerification(statusRes.verification_url);
+            if (statusRes.screenshot_path) setPwScreenshot(statusRes.screenshot_path);
           } else if (statusRes.status === 'failed') {
             clearInterval(interval);
             setPwStatus('failed');
@@ -316,7 +319,7 @@ const AccountList: React.FC = () => {
         </div>
         <div className="flex gap-3">
           <button
-              onClick={() => { setShowPwModal(true); setPwStatus('form'); setPwError(''); setPwVerification(''); }}
+              onClick={() => { setShowPwModal(true); setPwStatus('form'); setPwError(''); setPwVerification(''); setPwScreenshot(''); }}
               className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-white text-gray-900 border-2 border-gray-200 hover:border-gray-300 transition-colors"
           >
             <KeyRound className="w-5 h-5" />
@@ -534,7 +537,10 @@ const AccountList: React.FC = () => {
                               <div className="py-6 flex flex-col items-center">
                                   <ShieldAlert className="w-8 h-8 text-orange-500 mb-2" />
                                   <span className="text-orange-500 font-bold mb-1">需要验证</span>
-                                  <p className="text-xs text-gray-500 text-center mb-3">{pwVerification ? '请点击下方按钮在手机/浏览器完成验证，完成后自动继续' : '请在完成验证截图所示操作后等待自动继续'}</p>
+                                  {pwScreenshot && (
+                                      <img src={pwScreenshot.startsWith('/static/') ? pwScreenshot : `/static/${pwScreenshot.replace(/^static\//, '')}`} alt="验证二维码" className="w-56 h-56 object-contain bg-white rounded-xl border-4 border-white shadow-inner mb-3" />
+                                  )}
+                                  <p className="text-xs text-gray-500 text-center mb-3">{pwVerification ? '请点击下方按钮在手机/浏览器完成验证，完成后自动继续' : (pwScreenshot ? '请用闲鱼APP扫描上方二维码完成人脸验证，完成后自动继续' : '请等待验证完成，系统会自动继续')}</p>
                                   {pwVerification && (
                                       <a href={pwVerification} target="_blank" rel="noopener noreferrer"
                                           className="text-xs bg-[#FFE815] text-gray-900 font-bold px-4 py-1.5 rounded-full hover:brightness-95 transition">
