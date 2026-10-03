@@ -60,6 +60,10 @@ export const startPasswordLogin = async (data: { account_id: string; account: st
   return post('/password-login', data);
 };
 
+export const addCookie = async (data: { id: string; value: string }): Promise<{ msg?: string; detail?: string }> => {
+  return post('/cookies', data);
+};
+
 export const checkPasswordLoginStatus = async (sessionId: string): Promise<any> => {
   return get(`/password-login/check/${sessionId}`);
 };

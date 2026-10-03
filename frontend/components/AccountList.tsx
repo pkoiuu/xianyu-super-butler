@@ -9,6 +9,7 @@ import {
   checkQRLoginStatus,
   startPasswordLogin,
   checkPasswordLoginStatus,
+  addCookie,
   updateAccountRemark,
   updateAccountAutoConfirm,
   updateAccountPauseDuration,
@@ -40,6 +41,11 @@ const AccountList: React.FC = () => {
   const [pwError, setPwError] = useState<string>('');
   const [pwVerification, setPwVerification] = useState<string>('');
   const [pwScreenshot, setPwScreenshot] = useState<string>('');
+  // Cookie 粘贴登录状态
+  const [showCookieModal, setShowCookieModal] = useState(false);
+  const [cookieForm, setCookieForm] = useState({ id: '', value: '' });
+  const [cookieStatus, setCookieStatus] = useState<string>('form'); // form/loading/success/failed
+  const [cookieError, setCookieError] = useState<string>('');
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [editingAccount, setEditingAccount] = useState<AccountDetail | null>(null);
 
@@ -310,6 +316,29 @@ const AccountList: React.FC = () => {
 
   if (loading) return <div className="p-20 flex justify-center"><Loader2 className="w-8 h-8 text-[#FFE815] animate-spin"/></div>;
 
+  const submitCookieLogin = async () => {
+    if (!cookieForm.id.trim() || !cookieForm.value.trim()) {
+      setCookieError('请填写账号ID和Cookie字符串');
+      return;
+    }
+    setCookieStatus('loading');
+    setCookieError('');
+    try {
+      await addCookie({ id: cookieForm.id.trim(), value: cookieForm.value.trim() });
+      setCookieStatus('success');
+      setTimeout(async () => {
+        setShowCookieModal(false);
+        setCookieStatus('form');
+        setCookieForm({ id: '', value: '' });
+        const data = await getAccountDetails();
+        setAccounts(data);
+      }, 1200);
+    } catch (e: any) {
+      setCookieStatus('failed');
+      setCookieError(e?.message || '添加失败，请检查 Cookie 格式');
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in relative">
       <div className="flex justify-between items-end">
@@ -318,6 +347,13 @@ const AccountList: React.FC = () => {
           <p className="text-gray-500 mt-2 font-medium">管理您的闲鱼授权账号及设置。</p>
         </div>
         <div className="flex gap-3">
+          <button
+              onClick={() => { setShowCookieModal(true); setCookieStatus('form'); setCookieError(''); setCookieForm({ id: '', value: '' }); }}
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-white text-gray-900 border-2 border-gray-200 hover:border-gray-300 transition-colors"
+          >
+            <Upload className="w-5 h-5" />
+            Cookie添加
+          </button>
           <button
               onClick={() => { setShowPwModal(true); setPwStatus('form'); setPwError(''); setPwVerification(''); setPwScreenshot(''); }}
               className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-white text-gray-900 border-2 border-gray-200 hover:border-gray-300 transition-colors"
@@ -575,6 +611,81 @@ const AccountList: React.FC = () => {
       )}
 
       {/* 编辑账号弹窗 */}
+      {showCookieModal && createPortal(
+          <div className="modal-overlay-centered">
+              <div className="modal-container" style={{maxWidth: '28rem'}}>
+                  <button
+                    onClick={() => setShowCookieModal(false)}
+                    className="self-end p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors mb-6"
+                  >
+                    <X className="w-5 h-5 text-gray-600" />
+                  </button>
+
+                  <div className="modal-body">
+                      <div className="text-center">
+                          <h3 className="text-2xl font-extrabold text-gray-900 mb-2">Cookie 粘贴登录</h3>
+                          <p className="text-gray-500 mb-6 font-medium">从已登录的浏览器复制 Cookie 粘贴添加，无需验证</p>
+
+                          {cookieStatus === 'form' && (
+                              <div className="space-y-3 text-left mb-4">
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">账号ID（自定义备注，不可重复）</label>
+                                      <input
+                                          value={cookieForm.id}
+                                          onChange={(e) => setCookieForm({...cookieForm, id: e.target.value})}
+                                          placeholder="例如 hhj"
+                                          className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#FFE815] outline-none text-sm"
+                                      />
+                                  </div>
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-600 mb-1">Cookie 字符串（需包含 unb 字段）</label>
+                                      <textarea
+                                          value={cookieForm.value}
+                                          onChange={(e) => setCookieForm({...cookieForm, value: e.target.value})}
+                                          placeholder="粘贴完整 Cookie 字符串..."
+                                          rows={6}
+                                          className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#FFE815] outline-none text-xs font-mono resize-none"
+                                      />
+                                  </div>
+                                  {cookieError && <p className="text-red-500 text-xs">{cookieError}</p>}
+                                  <button
+                                      onClick={submitCookieLogin}
+                                      className="w-full ios-btn-primary py-3 rounded-xl font-bold"
+                                  >
+                                      添加账号
+                                  </button>
+                              </div>
+                          )}
+
+                          {cookieStatus === 'loading' && (
+                              <div className="py-8 flex flex-col items-center">
+                                  <Loader2 className="w-8 h-8 text-[#FFE815] animate-spin mb-3" />
+                                  <span className="text-gray-500 font-medium">正在添加账号...</span>
+                              </div>
+                          )}
+
+                          {cookieStatus === 'success' && (
+                              <div className="py-8 flex flex-col items-center">
+                                  <Check className="w-10 h-10 text-green-500 mb-3" />
+                                  <span className="text-green-600 font-bold">添加成功，账号已启用</span>
+                              </div>
+                          )}
+
+                          {cookieStatus === 'failed' && (
+                              <div className="py-6 flex flex-col items-center">
+                                  <X className="w-10 h-10 text-red-500 mb-3" />
+                                  <span className="text-red-500 font-bold mb-2">添加失败</span>
+                                  <p className="text-xs text-gray-500 text-center mb-4">{cookieError}</p>
+                                  <button onClick={() => { setCookieStatus('form'); setCookieError(''); }} className="px-6 py-2 rounded-xl bg-gray-100 font-bold text-sm hover:bg-gray-200">重新填写</button>
+                              </div>
+                          )}
+                      </div>
+                  </div>
+              </div>
+          </div>,
+          document.body
+      )}
+
       {activeModal === 'edit' && editingAccount && createPortal(
         <div className="modal-overlay-centered">
           <div className="modal-container" style={{maxWidth: '600px'}}>
