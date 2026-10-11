@@ -697,10 +697,16 @@ class DBManager:
             raise
 
     def is_system_initialized(self) -> bool:
-        """判断系统是否已完成初始化（至少存在 admin 用户）"""
+        """判断系统是否已完成初始化（至少存在 admin 用户，兼容改名为 hhj）"""
         try:
             admin_user = self.get_user_by_username('admin')
-            return bool(admin_user)
+            if admin_user:
+                return True
+            # admin 已改名为 hhj 的情况：只要存在管理员用户即视为已初始化
+            with self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute('SELECT id FROM users WHERE is_admin = 1 LIMIT 1')
+                return cursor.fetchone() is not None
         except Exception:
             return False
             self.conn.commit()
