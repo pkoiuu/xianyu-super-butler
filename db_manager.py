@@ -352,6 +352,7 @@ class DBManager:
                 delivery_times INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                user_id INTEGER NOT NULL DEFAULT 1,
                 FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
             )
             ''')
@@ -689,11 +690,32 @@ class DBManager:
                 self.set_system_setting("db_version", "1.5", "数据库版本号")
                 logger.info("数据库升级到版本1.5完成")
 
+            # 升级到版本1.6 - 为delivery_rules表添加user_id字段
+            if current_version < "1.6":
+                logger.info("开始升级数据库到版本1.6...")
+                self.upgrade_delivery_rules_for_user_id(cursor)
+                self.set_system_setting("db_version", "1.6", "数据库版本号")
+                logger.info("数据库升级到版本1.6完成")
+
             # 迁移遗留数据（在所有版本升级完成后执行）
             self.migrate_legacy_data(cursor)
 
         except Exception as e:
             logger.error(f"数据库版本检查或升级失败: {e}")
+            raise
+
+    def upgrade_delivery_rules_for_user_id(self, cursor):
+        """升级delivery_rules表：添加user_id字段（兼容旧表）"""
+        try:
+            cursor.execute("PRAGMA table_info(delivery_rules)")
+            cols = [row[1] for row in cursor.fetchall()]
+            if 'user_id' not in cols:
+                cursor.execute('ALTER TABLE delivery_rules ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1')
+                logger.info("delivery_rules表已添加user_id字段")
+            else:
+                logger.info("delivery_rules表已存在user_id字段，跳过")
+        except Exception as e:
+            logger.error(f"升级delivery_rules表失败: {e}")
             raise
 
     def is_system_initialized(self) -> bool:
